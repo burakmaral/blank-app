@@ -99,11 +99,13 @@ st.markdown("---")
 
 st.header("🎯 Detailed Product Performance Analysis (For Upsell Strategy)")
 
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🏆 Best Performers", 
     "⚠️ High Interest, Low Conversion", 
     "🚨 Checkout Abandoners",
-    "📊 Comparison Matrix"
+    "📊 Comparison Matrix",
+    "💰 Revenue Opportunity",
+    "🔄 Product Segments"
 ])
 
 # TAB 1: Best Performing Products
@@ -177,15 +179,34 @@ with tab2:
     df_interest = df_interest[df_interest['Checkout Completion Rate (%)'] < 50]  # Less than 50% complete after reaching checkout
     df_interest_sorted = df_interest.sort_values('Sessions with cart additions', ascending=False).head(15)
     
-    fig_interest = px.scatter(
-        df_interest_sorted,
-        x='Sessions with cart additions',
-        y='Checkout Completion Rate (%)',
-        size='Added but Never Checkout',
-        color='Landing page type',
-        hover_name='Landing page path',
-        title="Products with High Interest but Poor Conversion",
-        labels={'Added but Never Checkout': 'Lost Customers'}
+    # Display chart with grouped bars
+    fig_interest = go.Figure()
+    fig_interest.add_trace(go.Bar(
+        name='Completed Checkout',
+        y=df_interest_sorted['Landing page path'],
+        x=df_interest_sorted['Sessions that completed checkout'],
+        orientation='h',
+        marker_color='#00CC96'
+    ))
+    fig_interest.add_trace(go.Bar(
+        name='Reached Checkout',
+        y=df_interest_sorted['Landing page path'],
+        x=df_interest_sorted['Sessions that reached checkout'],
+        orientation='h',
+        marker_color='#FFA15A'
+    ))
+    fig_interest.add_trace(go.Bar(
+        name='Added to Cart',
+        y=df_interest_sorted['Landing page path'],
+        x=df_interest_sorted['Sessions with cart additions'],
+        orientation='h',
+        marker_color='#636EFA'
+    ))
+    fig_interest.update_layout(
+        barmode='group',
+        title="Top 15 High Interest Products with Low Conversion",
+        yaxis=dict(autorange="reversed"),
+        height=600
     )
     st.plotly_chart(fig_interest, use_container_width=True)
     
@@ -210,24 +231,31 @@ with tab3:
     df_abandon = df_filtered[df_filtered['Sessions that reached checkout'] >= 10].copy()
     df_abandon_sorted = df_abandon.sort_values('Reached but Never Completed', ascending=False).head(15)
     
-    # Stacked bar chart showing the gap
+    # Grouped bar chart showing the comparison
     fig_abandon = go.Figure()
     fig_abandon.add_trace(go.Bar(
-        name='Completed',
+        name='Completed Checkout',
         y=df_abandon_sorted['Landing page path'],
         x=df_abandon_sorted['Sessions that completed checkout'],
         orientation='h',
         marker_color='#00CC96'
     ))
     fig_abandon.add_trace(go.Bar(
-        name='Abandoned at Checkout',
+        name='Reached Checkout',
         y=df_abandon_sorted['Landing page path'],
-        x=df_abandon_sorted['Reached but Never Completed'],
+        x=df_abandon_sorted['Sessions that reached checkout'],
         orientation='h',
-        marker_color='#EF553B'
+        marker_color='#FFA15A'
+    ))
+    fig_abandon.add_trace(go.Bar(
+        name='Added to Cart',
+        y=df_abandon_sorted['Landing page path'],
+        x=df_abandon_sorted['Sessions with cart additions'],
+        orientation='h',
+        marker_color='#636EFA'
     ))
     fig_abandon.update_layout(
-        barmode='stack',
+        barmode='group',
         title="Top 15 Products with Most Checkout Abandonment",
         yaxis=dict(autorange="reversed"),
         height=600
@@ -292,6 +320,186 @@ with tab4:
             'Checkout Completion Rate (%)', 'Conversion Rate (%)',
             'Added but Never Checkout', 'Reached but Never Completed'
         ]].sort_values('Sessions that completed checkout', ascending=False),
+        use_container_width=True
+    )
+
+# TAB 5: Revenue Opportunity Analysis
+with tab5:
+    st.subheader("💰 Lost Revenue Opportunity Analysis")
+    st.markdown("**Calculate potential revenue recovery by fixing funnel leaks**")
+    
+    # Let user input average order value
+    col1, col2 = st.columns(2)
+    with col1:
+        avg_order_value = st.number_input("Average Order Value ($)", min_value=0.0, value=50.0, step=5.0)
+    with col2:
+        target_recovery_rate = st.slider("Target Recovery Rate (%)", min_value=0, max_value=100, value=30)
+    
+    # Calculate potential revenue
+    df_revenue = df_filtered[df_filtered['Sessions with cart additions'] >= 10].copy()
+    
+    # Potential revenue from cart abandoners (added but never reached checkout)
+    df_revenue['Lost at Cart ($)'] = df_revenue['Added but Never Checkout'] * avg_order_value
+    df_revenue['Recoverable from Cart ($)'] = df_revenue['Lost at Cart ($)'] * (target_recovery_rate / 100)
+    
+    # Potential revenue from checkout abandoners (reached but never completed)
+    df_revenue['Lost at Checkout ($)'] = df_revenue['Reached but Never Completed'] * avg_order_value
+    df_revenue['Recoverable from Checkout ($)'] = df_revenue['Lost at Checkout ($)'] * (target_recovery_rate / 100)
+    
+    # Total potential
+    df_revenue['Total Recoverable ($)'] = df_revenue['Recoverable from Cart ($)'] + df_revenue['Recoverable from Checkout ($)']
+    
+    # Summary metrics
+    total_lost_cart = df_revenue['Lost at Cart ($)'].sum()
+    total_lost_checkout = df_revenue['Lost at Checkout ($)'].sum()
+    total_recoverable = df_revenue['Total Recoverable ($)'].sum()
+    
+    col1, col2, col3 = st.columns(3)
+    col1.metric("💸 Lost at Cart Stage", f"${total_lost_cart:,.0f}")
+    col2.metric("💸 Lost at Checkout Stage", f"${total_lost_checkout:,.0f}")
+    col3.metric("✅ Recoverable Revenue", f"${total_recoverable:,.0f}", f"at {target_recovery_rate}% recovery")
+    
+    st.markdown("---")
+    
+    # Top opportunities chart
+    df_revenue_top = df_revenue.nlargest(15, 'Total Recoverable ($)')
+    
+    fig_revenue = go.Figure()
+    fig_revenue.add_trace(go.Bar(
+        name='Recoverable from Cart',
+        y=df_revenue_top['Landing page path'],
+        x=df_revenue_top['Recoverable from Cart ($)'],
+        orientation='h',
+        marker_color='#636EFA'
+    ))
+    fig_revenue.add_trace(go.Bar(
+        name='Recoverable from Checkout',
+        y=df_revenue_top['Landing page path'],
+        x=df_revenue_top['Recoverable from Checkout ($)'],
+        orientation='h',
+        marker_color='#EF553B'
+    ))
+    fig_revenue.update_layout(
+        barmode='stack',
+        title=f"Top 15 Revenue Recovery Opportunities (at {target_recovery_rate}% recovery rate)",
+        yaxis=dict(autorange="reversed"),
+        height=600,
+        xaxis_title="Potential Recoverable Revenue ($)"
+    )
+    st.plotly_chart(fig_revenue, use_container_width=True)
+    
+    st.markdown("#### 💎 Prioritized Action List")
+    st.dataframe(
+        df_revenue_top[[
+            'Landing page path',
+            'Added but Never Checkout',
+            'Reached but Never Completed',
+            'Lost at Cart ($)',
+            'Lost at Checkout ($)',
+            'Total Recoverable ($)'
+        ]].sort_values('Total Recoverable ($)', ascending=False).style.format({
+            'Lost at Cart ($)': '${:,.0f}',
+            'Lost at Checkout ($)': '${:,.0f}',
+            'Total Recoverable ($)': '${:,.0f}'
+        }),
+        use_container_width=True
+    )
+    
+    st.info(f"💡 **Insight**: If you can recover just {target_recovery_rate}% of abandoned sessions through email campaigns, retargeting ads, and checkout optimization, you could gain ${total_recoverable:,.0f} in additional revenue.")
+
+# TAB 6: Product Segmentation
+with tab6:
+    st.subheader("🔄 Product Segmentation by Behavior")
+    st.markdown("**Automatically categorize products by their funnel behavior to tailor your strategies**")
+    
+    df_segment = df_filtered[df_filtered['Sessions with cart additions'] >= 10].copy()
+    
+    # Define segments based on multiple criteria
+    def categorize_product(row):
+        cart_rate = row['Cart to Checkout Rate (%)']
+        checkout_comp = row['Checkout Completion Rate (%)']
+        conv_rate = row['Conversion Rate (%)']
+        
+        # High performers
+        if conv_rate >= 5 and checkout_comp >= 60:
+            return "🌟 Star Products"
+        # High interest but poor conversion
+        elif row['Sessions with cart additions'] >= 50 and conv_rate < 3:
+            return "⚠️ High Traffic Underperformers"
+        # Good at closing but low initial interest
+        elif checkout_comp >= 60 and cart_rate < 40:
+            return "💎 Hidden Gems"
+        # Checkout abandoners
+        elif cart_rate >= 50 and checkout_comp < 40:
+            return "🚨 Checkout Leakers"
+        # Cart abandoners
+        elif row['Add to Cart Rate (%)'] >= 10 and cart_rate < 50:
+            return "🛒 Cart Abandoners"
+        # Low everything
+        elif conv_rate < 2:
+            return "🔴 Needs Attention"
+        else:
+            return "📊 Average Performers"
+    
+    df_segment['Segment'] = df_segment.apply(categorize_product, axis=1)
+    
+    # Segment distribution
+    segment_counts = df_segment['Segment'].value_counts()
+    segment_revenue = df_segment.groupby('Segment')['Sessions that completed checkout'].sum().sort_values(ascending=False)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        fig_segment_pie = px.pie(
+            values=segment_counts.values,
+            names=segment_counts.index,
+            title="Product Distribution by Segment"
+        )
+        st.plotly_chart(fig_segment_pie, use_container_width=True)
+    
+    with col2:
+        fig_segment_bar = px.bar(
+            x=segment_revenue.values,
+            y=segment_revenue.index,
+            orientation='h',
+            title="Completed Checkouts by Segment",
+            labels={'x': 'Total Completed Checkouts', 'y': 'Segment'}
+        )
+        fig_segment_bar.update_layout(yaxis=dict(autorange="reversed"))
+        st.plotly_chart(fig_segment_bar, use_container_width=True)
+    
+    st.markdown("---")
+    st.markdown("#### 📋 Recommended Actions by Segment")
+    
+    strategies = {
+        "🌟 Star Products": "✅ Use these as primary upsells. Feature in email campaigns. Create bundles around these.",
+        "⚠️ High Traffic Underperformers": "🔧 Check pricing, shipping costs, product descriptions. A/B test checkout flow.",
+        "💎 Hidden Gems": "📢 Increase visibility through ads and featured sections. These convert well when discovered.",
+        "🚨 Checkout Leakers": "💳 Optimize checkout page. Add trust badges, simplify forms, offer multiple payment options.",
+        "🛒 Cart Abandoners": "📧 Implement cart abandonment emails. Offer free shipping thresholds.",
+        "🔴 Needs Attention": "🔍 Deep dive analysis needed. Consider discontinuing or major repositioning.",
+        "📊 Average Performers": "⚡ Incremental improvements. Test different approaches."
+    }
+    
+    for segment, strategy in strategies.items():
+        if segment in segment_counts.index:
+            count = segment_counts[segment]
+            st.markdown(f"**{segment}** ({count} products): {strategy}")
+    
+    st.markdown("---")
+    st.markdown("#### 🎯 Products by Segment")
+    
+    selected_segment = st.selectbox("Select a segment to view products:", df_segment['Segment'].unique())
+    
+    df_segment_filtered = df_segment[df_segment['Segment'] == selected_segment].sort_values('Sessions that completed checkout', ascending=False)
+    
+    st.dataframe(
+        df_segment_filtered[[
+            'Landing page path', 'Landing page type',
+            'Sessions', 'Sessions with cart additions',
+            'Sessions that reached checkout', 'Sessions that completed checkout',
+            'Conversion Rate (%)', 'Cart to Checkout Rate (%)', 'Checkout Completion Rate (%)'
+        ]],
         use_container_width=True
     )
 
