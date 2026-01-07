@@ -2,32 +2,33 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import os
 
 # Set page configuration
 st.set_page_config(page_title="E-Commerce Funnel & Upsell Strategy", layout="wide")
 
 st.title("🛍️ E-Commerce Session & Conversion Analysis")
-st.markdown("Upload your CSV file or use the default dataset to visualize the conversion funnel and identify top products for upsells.")
+st.markdown("Dashboard analyzing conversion funnels and product upsell opportunities.")
 
-# --- File Uploader & Data Loading ---
-uploaded_file = st.sidebar.file_uploader("Upload CSV", type=["csv"])
+# --- Data Loading (Directly from file) ---
+# We define the filename you showed in the screenshot
+FILENAME = "session-added-to-cart-reached-checkout-completed.csv"
 
 @st.cache_data
-def load_data(file):
-    df = pd.read_csv(file)
+def load_data(file_path):
+    df = pd.read_csv(file_path)
     df['Landing page type'] = df['Landing page type'].fillna('Unknown')
     return df
 
 try:
-    if uploaded_file is not None:
-        df = load_data(uploaded_file)
+    if os.path.exists(FILENAME):
+        df = load_data(FILENAME)
+        st.success(f"✅ Automatically loaded data from: `{FILENAME}`")
     else:
-        # Placeholder for local testing; users will likely upload a file
-        # Using a dummy fallback for the code to not crash if you run it without a file
-        st.info("ℹ️ Please upload your CSV file in the sidebar to begin.")
+        st.error(f"⚠️ Could not find the file: `{FILENAME}` in the current directory.")
         st.stop()
-except FileNotFoundError:
-    st.warning("⚠️ CSV file not found. Please upload your CSV file using the sidebar.")
+except Exception as e:
+    st.error(f"An error occurred while loading the file: {e}")
     st.stop()
 
 # --- Sidebar Filters ---
@@ -37,7 +38,7 @@ all_types = df['Landing page type'].unique().tolist()
 selected_types = st.sidebar.multiselect("Select Landing Page Type", all_types, default=all_types)
 
 # Slider for minimum sessions to filter out statistical noise
-min_sessions = st.sidebar.slider("Minimum Sessions Threshold", min_value=10, max_value=1000, value=50, step=10)
+min_sessions = st.sidebar.slider("Minimum Sessions Threshold", min_value=10, max_value=int(df['Sessions'].max()/10), value=50, step=10)
 
 df_filtered = df[
     (df['Landing page type'].isin(selected_types)) & 
@@ -45,7 +46,6 @@ df_filtered = df[
 ]
 
 # --- Calculate Additional Metrics ---
-# We calculate these on the fly based on the filtered dataframe
 df_filtered['Conversion Rate (%)'] = (df_filtered['Sessions that completed checkout'] / df_filtered['Sessions'] * 100).round(2)
 df_filtered['Add to Cart Rate (%)'] = (df_filtered['Sessions with cart additions'] / df_filtered['Sessions'] * 100).round(2)
 df_filtered['Cart to Checkout Rate (%)'] = (df_filtered['Sessions that reached checkout'] / df_filtered['Sessions with cart additions'] * 100).fillna(0).round(2)
