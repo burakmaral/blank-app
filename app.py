@@ -99,7 +99,8 @@ st.markdown("---")
 
 st.header("🎯 Detailed Product Performance Analysis (For Upsell Strategy)")
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+    "🎁 Checkout Upsell Picks",
     "🏆 Best Performers", 
     "⚠️ High Interest, Low Conversion", 
     "🚨 Checkout Abandoners",
@@ -108,8 +109,267 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🔄 Product Segments"
 ])
 
-# TAB 1: Best Performing Products
+# ========================================
+# NEW TAB: CHECKOUT UPSELL RECOMMENDATIONS
+# ========================================
 with tab1:
+    st.subheader("🎁 Best Products for Checkout Upsells")
+    st.markdown("""
+    **These products are ideal for checkout upsells because they:**
+    - ✅ Have proven conversion rates (people actually buy them)
+    - ✅ Don't cause abandonment (high checkout completion)
+    - ✅ Generate meaningful volume
+    - ✅ Show strong customer intent
+    """)
+    
+    # Upsell scoring algorithm
+    df_upsell = df_filtered[
+        (df_filtered['Sessions with cart additions'] >= 10) &  # Meaningful traffic
+        (df_filtered['Sessions that completed checkout'] >= 5)  # Proven conversions
+    ].copy()
+    
+    # Calculate Upsell Score (0-100)
+    # Factors:
+    # 1. Checkout Completion Rate (40%) - Most important: won't cause abandonment
+    # 2. Conversion Rate (30%) - Proven to convert
+    # 3. Volume (20%) - Actual completed orders
+    # 4. Cart-to-Checkout (10%) - Shows strong intent
+    
+    # Normalize metrics to 0-100 scale
+    df_upsell['norm_checkout_comp'] = (df_upsell['Checkout Completion Rate (%)'] / df_upsell['Checkout Completion Rate (%)'].max() * 100).fillna(0)
+    df_upsell['norm_conv_rate'] = (df_upsell['Conversion Rate (%)'] / df_upsell['Conversion Rate (%)'].max() * 100).fillna(0)
+    df_upsell['norm_volume'] = (df_upsell['Sessions that completed checkout'] / df_upsell['Sessions that completed checkout'].max() * 100).fillna(0)
+    df_upsell['norm_cart_checkout'] = (df_upsell['Cart to Checkout Rate (%)'] / df_upsell['Cart to Checkout Rate (%)'].max() * 100).fillna(0)
+    
+    # Calculate weighted Upsell Score
+    df_upsell['Upsell Score'] = (
+        df_upsell['norm_checkout_comp'] * 0.40 +
+        df_upsell['norm_conv_rate'] * 0.30 +
+        df_upsell['norm_volume'] * 0.20 +
+        df_upsell['norm_cart_checkout'] * 0.10
+    ).round(1)
+    
+    # Add recommendation tiers
+    def get_upsell_tier(score):
+        if score >= 80:
+            return "🥇 Tier 1: Primary Upsells"
+        elif score >= 60:
+            return "🥈 Tier 2: Secondary Upsells"
+        elif score >= 40:
+            return "🥉 Tier 3: Test Candidates"
+        else:
+            return "⚪ Not Recommended"
+    
+    df_upsell['Upsell Tier'] = df_upsell['Upsell Score'].apply(get_upsell_tier)
+    
+    # Sort by Upsell Score
+    df_upsell_sorted = df_upsell.sort_values('Upsell Score', ascending=False)
+    
+    # Display tier summary
+    st.markdown("### 📊 Upsell Tier Distribution")
+    tier_summary = df_upsell_sorted['Upsell Tier'].value_counts()
+    
+    col1, col2, col3, col4 = st.columns(4)
+    for idx, (tier, count) in enumerate(tier_summary.items()):
+        if idx == 0:
+            col1.metric(tier, count)
+        elif idx == 1:
+            col2.metric(tier, count)
+        elif idx == 2:
+            col3.metric(tier, count)
+        elif idx == 3:
+            col4.metric(tier, count)
+    
+    st.markdown("---")
+    
+    # Top 20 recommendations visualization
+    st.markdown("### 🏆 Top 20 Checkout Upsell Recommendations")
+    
+    df_top20 = df_upsell_sorted.head(20)
+    
+    # Create color mapping for tiers
+    color_map = {
+        "🥇 Tier 1: Primary Upsells": "#00CC96",
+        "🥈 Tier 2: Secondary Upsells": "#FFA15A", 
+        "🥉 Tier 3: Test Candidates": "#636EFA",
+        "⚪ Not Recommended": "#EF553B"
+    }
+    
+    fig_upsell = px.bar(
+        df_top20,
+        y='Landing page path',
+        x='Upsell Score',
+        color='Upsell Tier',
+        color_discrete_map=color_map,
+        orientation='h',
+        title="Top 20 Products by Upsell Score",
+        hover_data={
+            'Checkout Completion Rate (%)': ':.1f',
+            'Conversion Rate (%)': ':.1f',
+            'Sessions that completed checkout': True,
+            'Upsell Score': ':.1f'
+        }
+    )
+    fig_upsell.update_layout(
+        yaxis=dict(autorange="reversed"),
+        height=700,
+        xaxis_title="Upsell Score (0-100)"
+    )
+    st.plotly_chart(fig_upsell, use_container_width=True)
+    
+    st.markdown("---")
+    
+    # Detailed breakdown by tier
+    st.markdown("### 🎯 Recommended Actions by Tier")
+    
+    tier_tabs = st.tabs(["🥇 Tier 1", "🥈 Tier 2", "🥉 Tier 3"])
+    
+    with tier_tabs[0]:
+        st.markdown("""
+        **Tier 1: Primary Upsells (Score 80+)**
+        
+        These are your star products for checkout upsells:
+        - ✅ Place these prominently on the checkout page
+        - ✅ Use "Frequently bought together" messaging
+        - ✅ Offer bundle discounts (10-15% off when added)
+        - ✅ A/B test different presentation styles
+        """)
+        
+        df_tier1 = df_upsell_sorted[df_upsell_sorted['Upsell Tier'] == "🥇 Tier 1: Primary Upsells"]
+        
+        if len(df_tier1) > 0:
+            st.dataframe(
+                df_tier1[[
+                    'Landing page path', 'Landing page type',
+                    'Upsell Score',
+                    'Sessions that completed checkout',
+                    'Checkout Completion Rate (%)',
+                    'Conversion Rate (%)',
+                    'Cart to Checkout Rate (%)'
+                ]],
+                use_container_width=True
+            )
+        else:
+            st.info("No products meet Tier 1 criteria. Consider lowering filters or reviewing product performance.")
+    
+    with tier_tabs[1]:
+        st.markdown("""
+        **Tier 2: Secondary Upsells (Score 60-79)**
+        
+        Solid performers that can supplement your primary upsells:
+        - ✅ Rotate these in based on cart contents
+        - ✅ Use as alternatives to Tier 1 products
+        - ✅ Test in email follow-ups
+        - ✅ Consider for category-specific upsells
+        """)
+        
+        df_tier2 = df_upsell_sorted[df_upsell_sorted['Upsell Tier'] == "🥈 Tier 2: Secondary Upsells"]
+        
+        if len(df_tier2) > 0:
+            st.dataframe(
+                df_tier2[[
+                    'Landing page path', 'Landing page type',
+                    'Upsell Score',
+                    'Sessions that completed checkout',
+                    'Checkout Completion Rate (%)',
+                    'Conversion Rate (%)',
+                    'Cart to Checkout Rate (%)'
+                ]],
+                use_container_width=True
+            )
+        else:
+            st.info("No products in Tier 2.")
+    
+    with tier_tabs[2]:
+        st.markdown("""
+        **Tier 3: Test Candidates (Score 40-59)**
+        
+        Potential upsells that need validation:
+        - ⚠️ Start with small A/B tests
+        - ⚠️ Monitor abandonment rates closely
+        - ⚠️ May work better for specific customer segments
+        - ⚠️ Consider improving product presentation first
+        """)
+        
+        df_tier3 = df_upsell_sorted[df_upsell_sorted['Upsell Tier'] == "🥉 Tier 3: Test Candidates"]
+        
+        if len(df_tier3) > 0:
+            st.dataframe(
+                df_tier3[[
+                    'Landing page path', 'Landing page type',
+                    'Upsell Score',
+                    'Sessions that completed checkout',
+                    'Checkout Completion Rate (%)',
+                    'Conversion Rate (%)',
+                    'Cart to Checkout Rate (%)'
+                ]].head(15),
+                use_container_width=True
+            )
+        else:
+            st.info("No products in Tier 3.")
+    
+    st.markdown("---")
+    
+    # Export functionality
+    st.markdown("### 📥 Export Upsell Recommendations")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        tier_filter = st.multiselect(
+            "Select tiers to export:",
+            options=df_upsell_sorted['Upsell Tier'].unique(),
+            default=[t for t in df_upsell_sorted['Upsell Tier'].unique() if "Tier" in t]
+        )
+    
+    with col2:
+        min_score = st.slider("Minimum Upsell Score:", 0, 100, 40)
+    
+    df_export = df_upsell_sorted[
+        (df_upsell_sorted['Upsell Tier'].isin(tier_filter)) &
+        (df_upsell_sorted['Upsell Score'] >= min_score)
+    ]
+    
+    st.markdown(f"**{len(df_export)} products** match your export criteria")
+    
+    csv = df_export[[
+        'Landing page path', 'Landing page type',
+        'Upsell Tier', 'Upsell Score',
+        'Sessions', 'Sessions that completed checkout',
+        'Conversion Rate (%)', 'Checkout Completion Rate (%)',
+        'Cart to Checkout Rate (%)', 'Add to Cart Rate (%)'
+    ]].to_csv(index=False)
+    
+    st.download_button(
+        label="📥 Download Upsell Recommendations (CSV)",
+        data=csv,
+        file_name="checkout_upsell_recommendations.csv",
+        mime="text/csv"
+    )
+    
+    st.markdown("---")
+    
+    # Score explanation
+    with st.expander("ℹ️ How is the Upsell Score calculated?"):
+        st.markdown("""
+        The **Upsell Score** (0-100) is calculated using a weighted formula:
+        
+        - **40%**: Checkout Completion Rate - *Won't cause cart abandonment*
+        - **30%**: Overall Conversion Rate - *Proven to convert visitors*
+        - **20%**: Completed Order Volume - *Meaningful transaction history*
+        - **10%**: Cart-to-Checkout Rate - *Strong purchase intent*
+        
+        **Why these weights?**
+        - Checkout completion is weighted highest because an upsell that causes abandonment defeats the purpose
+        - Conversion rate shows the product has proven appeal
+        - Volume ensures we're recommending products with track records
+        - Cart-to-checkout indicates strong buyer intent
+        
+        Products scoring 80+ are your safest, highest-performing upsell candidates.
+        """)
+
+# TAB 2: Best Performing Products
+with tab2:
     st.subheader("Best Converting Products (Full Funnel Winners)")
     st.markdown("**These products have high cart additions AND high checkout completion. Use these for upsells!**")
     
@@ -168,15 +428,15 @@ with tab1:
         use_container_width=True
     )
 
-# TAB 2: High Interest but Low Conversion
-with tab2:
+# TAB 3: High Interest but Low Conversion
+with tab3:
     st.subheader("High Cart Adds, Low Checkout Completion")
     st.markdown("**⚠️ These products get added to cart often but don't convert well. Prime candidates for:**")
     st.markdown("- Exit-intent popups with discounts\n- Free shipping offers\n- Trust badges (reviews, guarantees)\n- Cart abandonment emails")
     
     # Products with high cart additions but poor checkout completion
     df_interest = df_filtered[df_filtered['Sessions with cart additions'] >= 20].copy()
-    df_interest = df_interest[df_interest['Checkout Completion Rate (%)'] < 50]  # Less than 50% complete after reaching checkout
+    df_interest = df_interest[df_interest['Checkout Completion Rate (%)'] < 50]
     df_interest_sorted = df_interest.sort_values('Sessions with cart additions', ascending=False).head(15)
     
     # Display chart with grouped bars
@@ -222,8 +482,8 @@ with tab2:
         use_container_width=True
     )
 
-# TAB 3: Checkout Abandoners
-with tab3:
+# TAB 4: Checkout Abandoners
+with tab4:
     st.subheader("Reached Checkout but Didn't Complete")
     st.markdown("**🚨 These users were VERY close to buying. Focus recovery efforts here:**")
     st.markdown("- Retargeting ads\n- Personalized email sequences\n- One-click checkout improvements\n- Payment option expansion")
@@ -273,8 +533,8 @@ with tab3:
         use_container_width=True
     )
 
-# TAB 4: Comparison Matrix
-with tab4:
+# TAB 5: Comparison Matrix
+with tab5:
     st.subheader("Product Performance Matrix")
     st.markdown("**Compare all products across key metrics. Identify patterns for upsell bundling.**")
     
@@ -323,8 +583,8 @@ with tab4:
         use_container_width=True
     )
 
-# TAB 5: Revenue Opportunity Analysis
-with tab5:
+# TAB 6: Revenue Opportunity Analysis
+with tab6:
     st.subheader("💰 Lost Revenue Opportunity Analysis")
     st.markdown("**Calculate potential revenue recovery by fixing funnel leaks**")
     
@@ -407,8 +667,8 @@ with tab5:
     
     st.info(f"💡 **Insight**: If you can recover just {target_recovery_rate}% of abandoned sessions through email campaigns, retargeting ads, and checkout optimization, you could gain ${total_recoverable:,.0f} in additional revenue.")
 
-# TAB 6: Product Segmentation
-with tab6:
+# TAB 7: Product Segmentation
+with tab7:
     st.subheader("🔄 Product Segmentation by Behavior")
     st.markdown("**Automatically categorize products by their funnel behavior to tailor your strategies**")
     
@@ -576,3 +836,4 @@ st.dataframe(
         'Cart Abandonment Rate (%)'
     ]].sort_values(by='Cart Abandonment Rate (%)', ascending=False).head(10)
 )
+            '
